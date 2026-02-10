@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kirjaudu sisään | ilari2024</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .gradient-bg {
+            background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        }
+
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen flex items-center justify-center p-4">
+
+    <div class="glass-effect w-full max-w-md p-8 rounded-3xl shadow-2xl">
+        <div class="text-center mb-10">
+            <a href="../index.html" class="inline-block mb-6 text-blue-600 hover:text-blue-800 transition">
+                <i class="fas fa-arrow-left mr-2"></i> Takaisin etusivulle
+            </a>
+            <h1 class="text-3xl font-bold text-slate-900 mb-2">Pelaajan Kirjautuminen</h1>
+            <p class="text-slate-500">Kirjaudu sisään sähköpostilinkillä tallentaaksesi kolikkosi!</p>
+        </div>
+
+        <form id="loginForm" class="space-y-6">
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-2">Sähköpostiosoite</label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                        <i class="fas fa-envelope"></i>
+                    </span>
+                    <input type="email" id="email" required 
+                        class="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition" 
+                        placeholder="oma@email.com">
+                </div>
+            </div>
+
+            <button type="submit" id="signin-button"
+                class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-lg hover:bg-blue-700 transition shadow-lg active:scale-[0.98]">
+                Lähetä kirjautumislinkki
+            </button>
+        </form>
+
+        <div id="message" class="mt-6 text-center text-sm font-medium hidden p-4 rounded-lg"></div>
+        
+        <!-- Ohjelaatikko virheen sattuessa -->
+        <div id="helpBox" class="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 hidden">
+            <p class="font-bold mb-1 underline text-sm text-amber-900">TÄRKEÄÄ: Tee nämä asetukset!</p>
+            <p class="mb-2">Firebase ei vielä luota tähän sivustoon. Se pitää sallia näin:</p>
+            <ol class="list-decimal ml-4 space-y-1">
+                <li>Mene Firebase Console -> Authentication.</li>
+                <li>Valitse <strong>Settings</strong> -> <strong>Authorized Domains</strong>.</li>
+                <li>Klikkaa <strong>Add domain</strong> ja lisää: <strong class="bg-amber-200 px-1" id="domainHint"></strong></li>
+                <li>Varmista myös, että <strong>Email Link</strong> on päällä "Sign-in method" -kohdassa.</li>
+            </ol>
+        </div>
+    </div>
+
+    <script type="module">
+        // Käytetään antamiasi Firebase-tunnuksia
+        const firebaseConfig = {
+            apiKey: "AIzaSyBx0qtCamr84BuLu0scEWAJKjIok6N2dko",
+            authDomain: "kirjatuminen.firebaseapp.com",
+            databaseURL: "https://kirjatuminen-default-rtdb.firebaseio.com",
+            projectId: "kirjatuminen",
+            storageBucket: "kirjatuminen.firebasestorage.app",
+            messagingSenderId: "967445541491",
+            appId: "1:967445541491:web:dc06c7c912d492d0517006",
+            measurementId: "G-5585RWDD2S"
+        };
+
+        // Alusta Firebase
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+        import { getAuth, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+
+        const messageDiv = document.getElementById('message');
+        const emailInput = document.getElementById('email');
+        const helpBox = document.getElementById('helpBox');
+        const domainHint = document.getElementById('domainHint');
+
+        function showMessage(text, isError = false) {
+            messageDiv.textContent = text;
+            messageDiv.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
+            messageDiv.classList.add('block', isError ? 'bg-red-100' : 'bg-green-100', isError ? 'text-red-700' : 'text-green-700');
+            
+            if (isError) {
+                helpBox.classList.remove('hidden');
+                domainHint.textContent = window.location.hostname;
+            } else {
+                helpBox.classList.add('hidden');
+            }
+        }
+
+        // 1. Tarkistetaan onko käyttäjä juuri tullut sähköpostissa olevasta linkistä
+        if (isSignInWithEmailLink(auth, window.location.href)) {
+            let email = window.localStorage.getItem('emailForSignIn');
+            if (!email) {
+                email = window.prompt('Vahvista sähköpostisi kirjautumista varten:');
+            }
+            
+            if (email) {
+                signInWithEmailLink(auth, email, window.location.href)
+                    .then((result) => {
+                        window.localStorage.removeItem('emailForSignIn');
+                        showMessage("Kirjautuminen onnistui! Ohjataan peliin...");
+                        setTimeout(() => {
+                            window.location.href = "../shakki/";
+                        }, 1500);
+                    })
+                    .catch((error) => {
+                        showMessage("Kirjautumisvirhe: " + error.message, true);
+                    });
+            }
+        }
+
+        // 2. Käsittelijä kirjautumislinkin lähettämiselle
+        async function handleSendLink(e) {
+            e.preventDefault();
+            const email = emailInput.value;
+
+            // Käytetään puhdasta osoitetta paluulinkkinä
+            const currentUrl = window.location.origin + window.location.pathname;
+
+            const actionCodeSettings = {
+                url: currentUrl,
+                handleCodeInApp: true
+            };
+
+            try {
+                await sendSignInLinkToEmail(auth, email, actionCodeSettings);
+                window.localStorage.setItem('emailForSignIn', email);
+                showMessage("Kirjautumislinkki lähetetty! Tarkista sähköpostisi.", false);
+            } catch (error) {
+                console.error("Firebase virhekoodi:", error.code);
+                
+                if (error.code === 'auth/unauthorized-continue-uri' || error.code === 'auth/invalid-continue-uri') {
+                    showMessage("Virhe: Tämä osoite ei ole sallittu Firebasessa.", true);
+                } else if (error.code === 'auth/operation-not-allowed') {
+                    showMessage("Virhe: Sähköpostilinkki-kirjautuminen ei ole päällä Firebase-asetuksissa.", true);
+                } else {
+                    showMessage("Virhe: " + error.message, true);
+                }
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                console.log("Pelaaja kirjautunut sisään:", user.email);
+            }
+        });
+
+        document.getElementById('loginForm').addEventListener('submit', handleSendLink);
+
+    </script>
+</body>
+</html>
