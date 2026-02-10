@@ -21,55 +21,74 @@
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
         }
+
+        .disabled-btn {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body class="gradient-bg min-h-screen flex items-center justify-center p-4">
 
     <div class="glass-effect w-full max-w-md p-8 rounded-3xl shadow-2xl">
         <div class="text-center mb-10">
-            <a href="../index.html" class="inline-block mb-6 text-blue-600 hover:text-blue-800 transition">
+            <a href="../index.html" class="inline-block mb-6 text-blue-600 hover:text-blue-800 transition font-medium">
                 <i class="fas fa-arrow-left mr-2"></i> Takaisin etusivulle
             </a>
             <h1 class="text-3xl font-bold text-slate-900 mb-2">Pelaajan Kirjautuminen</h1>
-            <p class="text-slate-500">Kirjaudu sisään sähköpostilinkillä tallentaaksesi kolikkosi!</p>
+            <p class="text-slate-500 text-sm">Kirjaudu sisään tallentaaksesi pisteesi ja kolikkosi!</p>
         </div>
 
-        <form id="loginForm" class="space-y-6">
+        <form id="authForm" class="space-y-4">
+            <!-- Sähköposti -->
             <div>
-                <label class="block text-sm font-semibold text-slate-700 mb-2">Sähköpostiosoite</label>
+                <label class="block text-sm font-semibold text-slate-700 mb-1">Sähköpostiosoite</label>
                 <div class="relative">
                     <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
                         <i class="fas fa-envelope"></i>
                     </span>
                     <input type="email" id="email" required 
                         class="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition" 
-                        placeholder="oma@email.com">
+                        placeholder="esimerkki@email.com">
                 </div>
             </div>
 
-            <button type="submit" id="signin-button"
-                class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-lg hover:bg-blue-700 transition shadow-lg active:scale-[0.98]">
-                Lähetä kirjautumislinkki
-            </button>
+            <!-- Salasana -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-1">Salasana</label>
+                <div class="relative">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                        <i class="fas fa-lock"></i>
+                    </span>
+                    <input type="password" id="password" required minlength="6"
+                        class="block w-full pl-10 pr-3 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition" 
+                        placeholder="vähintään 6 merkkiä">
+                    <button type="button" id="togglePassword" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-blue-600">
+                        <i class="fas fa-eye" id="eyeIcon"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-3 pt-2">
+                <button type="submit" id="loginBtn"
+                    class="w-full bg-blue-600 text-white py-3 rounded-xl font-bold text-lg hover:bg-blue-700 transition shadow-lg active:scale-[0.98]">
+                    Kirjaudu sisään
+                </button>
+                <button type="button" id="registerBtn"
+                    class="w-full bg-white border-2 border-blue-600 text-blue-600 py-3 rounded-xl font-bold text-lg hover:bg-blue-50 transition active:scale-[0.98]">
+                    Luo uusi tili
+                </button>
+            </div>
         </form>
 
         <div id="message" class="mt-6 text-center text-sm font-medium hidden p-4 rounded-lg"></div>
         
-        <!-- Ohjelaatikko virheen sattuessa -->
-        <div id="helpBox" class="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 hidden">
-            <p class="font-bold mb-1 underline text-sm text-amber-900">TÄRKEÄÄ: Tee nämä asetukset!</p>
-            <p class="mb-2">Firebase ei vielä luota tähän sivustoon. Se pitää sallia näin:</p>
-            <ol class="list-decimal ml-4 space-y-1">
-                <li>Mene Firebase Console -> Authentication.</li>
-                <li>Valitse <strong>Settings</strong> -> <strong>Authorized Domains</strong>.</li>
-                <li>Klikkaa <strong>Add domain</strong> ja lisää: <strong class="bg-amber-200 px-1" id="domainHint"></strong></li>
-                <li>Varmista myös, että <strong>Email Link</strong> on päällä "Sign-in method" -kohdassa.</li>
-            </ol>
+        <div id="statusInfo" class="mt-4 text-center text-xs text-slate-400 hidden">
+            Olet jo kirjautunut sisään. <button id="logoutBtn" class="text-blue-500 underline">Kirjaudu ulos</button>
         </div>
     </div>
 
     <script type="module">
-        // Käytetään antamiasi Firebase-tunnuksia
         const firebaseConfig = {
             apiKey: "AIzaSyBx0qtCamr84BuLu0scEWAJKjIok6N2dko",
             authDomain: "kirjatuminen.firebaseapp.com",
@@ -81,91 +100,117 @@
             measurementId: "G-5585RWDD2S"
         };
 
-        // Alusta Firebase
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
 
         const messageDiv = document.getElementById('message');
         const emailInput = document.getElementById('email');
-        const helpBox = document.getElementById('helpBox');
-        const domainHint = document.getElementById('domainHint');
+        const passwordInput = document.getElementById('password');
+        const togglePassword = document.getElementById('togglePassword');
+        const eyeIcon = document.getElementById('eyeIcon');
+        const statusInfo = document.getElementById('statusInfo');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const loginBtn = document.getElementById('loginBtn');
+        const registerBtn = document.getElementById('registerBtn');
 
         function showMessage(text, isError = false) {
             messageDiv.textContent = text;
-            messageDiv.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700', 'bg-blue-100', 'text-blue-700');
+            messageDiv.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
             messageDiv.classList.add('block', isError ? 'bg-red-100' : 'bg-green-100', isError ? 'text-red-700' : 'text-green-700');
-            
-            if (isError) {
-                helpBox.classList.remove('hidden');
-                domainHint.textContent = window.location.hostname;
+        }
+
+        function setButtonsDisabled(disabled) {
+            loginBtn.disabled = disabled;
+            registerBtn.disabled = disabled;
+            if (disabled) {
+                loginBtn.classList.add('disabled-btn');
+                registerBtn.classList.add('disabled-btn');
             } else {
-                helpBox.classList.add('hidden');
+                loginBtn.classList.remove('disabled-btn');
+                registerBtn.classList.remove('disabled-btn');
             }
         }
 
-        // 1. Tarkistetaan onko käyttäjä juuri tullut sähköpostissa olevasta linkistä
-        if (isSignInWithEmailLink(auth, window.location.href)) {
-            let email = window.localStorage.getItem('emailForSignIn');
-            if (!email) {
-                email = window.prompt('Vahvista sähköpostisi kirjautumista varten:');
-            }
-            
-            if (email) {
-                signInWithEmailLink(auth, email, window.location.href)
-                    .then((result) => {
-                        window.localStorage.removeItem('emailForSignIn');
-                        showMessage("Kirjautuminen onnistui! Ohjataan peliin...");
-                        setTimeout(() => {
-                            window.location.href = "../shakki/";
-                        }, 1500);
-                    })
-                    .catch((error) => {
-                        showMessage("Kirjautumisvirhe: " + error.message, true);
-                    });
-            }
+        function redirectToGame() {
+            const target = "../shakki/index.html"; 
+            window.location.href = target;
         }
 
-        // 2. Käsittelijä kirjautumislinkin lähettämiselle
-        async function handleSendLink(e) {
+        togglePassword.addEventListener('click', () => {
+            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
+            passwordInput.setAttribute('type', type);
+            eyeIcon.classList.toggle('fa-eye');
+            eyeIcon.classList.toggle('fa-eye-slash');
+        });
+
+        document.getElementById('authForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = emailInput.value;
+            const password = passwordInput.value;
 
-            // Käytetään puhdasta osoitetta paluulinkkinä
-            const currentUrl = window.location.origin + window.location.pathname;
-
-            const actionCodeSettings = {
-                url: currentUrl,
-                handleCodeInApp: true
-            };
+            setButtonsDisabled(true);
+            showMessage("Kirjaudutaan...");
 
             try {
-                await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-                window.localStorage.setItem('emailForSignIn', email);
-                showMessage("Kirjautumislinkki lähetetty! Tarkista sähköpostisi.", false);
+                await signInWithEmailAndPassword(auth, email, password);
+                showMessage("Kirjautuminen onnistui! Siirrytään peliin...");
+                setTimeout(redirectToGame, 1000);
             } catch (error) {
-                console.error("Firebase virhekoodi:", error.code);
-                
-                if (error.code === 'auth/unauthorized-continue-uri' || error.code === 'auth/invalid-continue-uri') {
-                    showMessage("Virhe: Tämä osoite ei ole sallittu Firebasessa.", true);
-                } else if (error.code === 'auth/operation-not-allowed') {
-                    showMessage("Virhe: Sähköpostilinkki-kirjautuminen ei ole päällä Firebase-asetuksissa.", true);
+                setButtonsDisabled(false);
+                console.error("Virhe:", error.code);
+                if (error.code === 'auth/invalid-credential') {
+                    showMessage("Virhe: Väärä sähköposti tai salasana. Jos et ole vielä luonut tiliä, paina 'Luo uusi tili'.", true);
+                } else if (error.code === 'auth/too-many-requests') {
+                    showMessage("Virhe: Liian monta yritystä. Odota hetki ennen uutta yritystä.", true);
                 } else {
-                    showMessage("Virhe: " + error.message, true);
+                    showMessage("Virhe kirjautumisessa: Tarkista tunnukset.", true);
                 }
-            }
-        }
-
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                console.log("Pelaaja kirjautunut sisään:", user.email);
             }
         });
 
-        document.getElementById('loginForm').addEventListener('submit', handleSendLink);
+        registerBtn.addEventListener('click', async () => {
+            const email = emailInput.value;
+            const password = passwordInput.value;
 
+            if (!email || password.length < 6) {
+                showMessage("Syötä toimiva sähköposti ja vähintään 6 merkkiä pitkä salasana.", true);
+                return;
+            }
+
+            setButtonsDisabled(true);
+            showMessage("Luodaan tiliä...");
+
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                showMessage("Tili luotu! Tervetuloa mukaan. Siirrytään peliin...");
+                setTimeout(redirectToGame, 1000);
+            } catch (error) {
+                setButtonsDisabled(false);
+                if (error.code === 'auth/email-already-in-use') {
+                    showMessage("Tämä sähköposti on jo käytössä. Kirjaudu sisään.", true);
+                } else if (error.code === 'auth/too-many-requests') {
+                    showMessage("Virhe: Odota hetki ennen uutta yritystä.", true);
+                } else {
+                    showMessage("Virhe tilin luonnissa: " + error.message, true);
+                }
+            }
+        });
+
+        logoutBtn.addEventListener('click', async () => {
+            await signOut(auth);
+            window.location.reload();
+        });
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                statusInfo.classList.remove('hidden');
+            } else {
+                statusInfo.classList.add('hidden');
+            }
+        });
     </script>
 </body>
 </html>
