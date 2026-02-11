@@ -39,8 +39,19 @@
             <p class="text-slate-500 text-sm">Kirjaudu sisään tallentaaksesi pisteesi ja kolikkosi!</p>
         </div>
 
+        <!-- Google-kirjautumispainike -->
+        <button id="googleLoginBtn" class="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 py-3 rounded-xl font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm active:scale-[0.98] mb-6">
+            <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/action/google.svg" alt="Google logo" class="w-5 h-5">
+            Kirjaudu Googlella
+        </button>
+
+        <div class="relative flex items-center mb-6">
+            <div class="flex-grow border-t border-slate-200"></div>
+            <span class="flex-shrink mx-4 text-slate-400 text-xs uppercase tracking-widest font-bold">tai sähköpostilla</span>
+            <div class="flex-grow border-t border-slate-200"></div>
+        </div>
+
         <form id="authForm" class="space-y-4">
-            <!-- Sähköposti -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 mb-1">Sähköpostiosoite</label>
                 <div class="relative">
@@ -53,7 +64,6 @@
                 </div>
             </div>
 
-            <!-- Salasana -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 mb-1">Salasana</label>
                 <div class="relative">
@@ -89,6 +99,7 @@
     </div>
 
     <script type="module">
+        // Firebase-konfiguraatio
         const firebaseConfig = {
             apiKey: "AIzaSyBx0qtCamr84BuLu0scEWAJKjIok6N2dko",
             authDomain: "kirjatuminen.firebaseapp.com",
@@ -101,10 +112,11 @@
         };
 
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
-        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+        import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
 
         const app = initializeApp(firebaseConfig);
         const auth = getAuth(app);
+        const googleProvider = new GoogleAuthProvider();
 
         const messageDiv = document.getElementById('message');
         const emailInput = document.getElementById('email');
@@ -115,29 +127,79 @@
         const logoutBtn = document.getElementById('logoutBtn');
         const loginBtn = document.getElementById('loginBtn');
         const registerBtn = document.getElementById('registerBtn');
+        const googleLoginBtn = document.getElementById('googleLoginBtn');
+
+        let isRedirecting = false;
 
         function showMessage(text, isError = false) {
             messageDiv.textContent = text;
-            messageDiv.classList.remove('hidden', 'bg-red-100', 'text-red-700', 'bg-green-100', 'text-green-700');
-            messageDiv.classList.add('block', isError ? 'bg-red-100' : 'bg-green-100', isError ? 'text-red-700' : 'text-green-700');
+            messageDiv.className = `mt-6 text-center text-sm font-medium p-4 rounded-lg block ${isError ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`;
         }
 
         function setButtonsDisabled(disabled) {
             loginBtn.disabled = disabled;
             registerBtn.disabled = disabled;
+            googleLoginBtn.disabled = disabled;
             if (disabled) {
                 loginBtn.classList.add('disabled-btn');
                 registerBtn.classList.add('disabled-btn');
+                googleLoginBtn.classList.add('disabled-btn');
             } else {
                 loginBtn.classList.remove('disabled-btn');
                 registerBtn.classList.remove('disabled-btn');
+                googleLoginBtn.classList.remove('disabled-btn');
             }
         }
 
         function redirectToGame() {
-            const target = "../shakki/index.html"; 
-            window.location.href = target;
+            if (isRedirecting) return;
+            isRedirecting = true;
+            localStorage.setItem('isLoggedIn', 'true');
+            setTimeout(() => {
+                window.location.href = "../shakki/index.html";
+            }, 1500);
         }
+
+        // Tarkista onko tultu takaisin uudelleenohjauksesta
+        getRedirectResult(auth).then((result) => {
+            if (result?.user) {
+                showMessage("Kirjautuminen onnistui!");
+                redirectToGame();
+            }
+        }).catch((error) => {
+            console.error("Redirect error:", error);
+            showMessage("Virhe kirjautumisessa palatessa.", true);
+        });
+
+        // Google-kirjautuminen
+        googleLoginBtn.addEventListener('click', async () => {
+            if (isRedirecting) return;
+            setButtonsDisabled(true);
+            showMessage("Avataan Google-kirjautumista...");
+            
+            try {
+                // Kokeillaan ensin popupia
+                await signInWithPopup(auth, googleProvider);
+                showMessage("Google-kirjautuminen onnistui! Siirrytään peliin...");
+                redirectToGame();
+            } catch (error) {
+                console.error("Popup error:", error.code, error.message);
+                
+                // Jos popup sulkeutui liian nopeasti tai on estetty, käytetään redirectiä
+                if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+                    showMessage("Ponnahdusikkuna sulkeutui. Yritetään uudelleenohjausta...");
+                    try {
+                        await signInWithRedirect(auth, googleProvider);
+                    } catch (reErr) {
+                        setButtonsDisabled(false);
+                        showMessage("Kirjautuminen epäonnistui.", true);
+                    }
+                } else {
+                    setButtonsDisabled(false);
+                    showMessage("Virhe: " + error.message, true);
+                }
+            }
+        });
 
         togglePassword.addEventListener('click', () => {
             const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
@@ -148,6 +210,8 @@
 
         document.getElementById('authForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            if (isRedirecting) return;
+
             const email = emailInput.value;
             const password = passwordInput.value;
 
@@ -157,26 +221,24 @@
             try {
                 await signInWithEmailAndPassword(auth, email, password);
                 showMessage("Kirjautuminen onnistui! Siirrytään peliin...");
-                setTimeout(redirectToGame, 1000);
+                redirectToGame();
             } catch (error) {
                 setButtonsDisabled(false);
-                console.error("Virhe:", error.code);
                 if (error.code === 'auth/invalid-credential') {
-                    showMessage("Virhe: Väärä sähköposti tai salasana. Jos et ole vielä luonut tiliä, paina 'Luo uusi tili'.", true);
-                } else if (error.code === 'auth/too-many-requests') {
-                    showMessage("Virhe: Liian monta yritystä. Odota hetki ennen uutta yritystä.", true);
+                    showMessage("Virhe: Väärä sähköposti tai salasana.", true);
                 } else {
-                    showMessage("Virhe kirjautumisessa: Tarkista tunnukset.", true);
+                    showMessage("Virhe kirjautumisessa: " + error.message, true);
                 }
             }
         });
 
         registerBtn.addEventListener('click', async () => {
+            if (isRedirecting) return;
             const email = emailInput.value;
             const password = passwordInput.value;
 
             if (!email || password.length < 6) {
-                showMessage("Syötä toimiva sähköposti ja vähintään 6 merkkiä pitkä salasana.", true);
+                showMessage("Syötä sähköposti ja vähintään 6 merkin salasana.", true);
                 return;
             }
 
@@ -185,21 +247,16 @@
 
             try {
                 await createUserWithEmailAndPassword(auth, email, password);
-                showMessage("Tili luotu! Tervetuloa mukaan. Siirrytään peliin...");
-                setTimeout(redirectToGame, 1000);
+                showMessage("Tili luotu onnistuneesti! Siirrytään peliin...");
+                redirectToGame();
             } catch (error) {
                 setButtonsDisabled(false);
-                if (error.code === 'auth/email-already-in-use') {
-                    showMessage("Tämä sähköposti on jo käytössä. Kirjaudu sisään.", true);
-                } else if (error.code === 'auth/too-many-requests') {
-                    showMessage("Virhe: Odota hetki ennen uutta yritystä.", true);
-                } else {
-                    showMessage("Virhe tilin luonnissa: " + error.message, true);
-                }
+                showMessage("Virhe tilin luonnissa: " + error.message, true);
             }
         });
 
         logoutBtn.addEventListener('click', async () => {
+            localStorage.removeItem('isLoggedIn');
             await signOut(auth);
             window.location.reload();
         });
